@@ -268,9 +268,14 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
     private func createDecodeSession() {
         guard let fd = formatDescription else { return }
         var session: VTDecompressionSession?
+        let refCon = Unmanaged.passUnretained(self).toOpaque()
         var callback = VTDecompressionOutputCallbackRecord(
-            decompressionOutputCallback: { _, _, _, _, _, _, _ in },
-            decompressionOutputRefCon: nil)
+            decompressionOutputCallback: { refCon, _, status, _, imageBuffer, _, _ in
+                guard let refCon = refCon, status == noErr, let imageBuffer = imageBuffer else { return }
+                let client = Unmanaged<ScrcpyClient>.fromOpaque(refCon).takeUnretainedValue()
+                client.renderFrame(imageBuffer)
+            },
+            decompressionOutputRefCon: refCon)
         let status = VTDecompressionSessionCreate(
             allocator: kCFAllocatorDefault,
             formatDescription: fd,
@@ -326,13 +331,10 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
             sampleBufferOut: &sampleBuffer)
         guard sampleStatus == noErr, let sampleBuffer = sampleBuffer else { return }
 
-        let decodeStatus = VTDecompressionSessionDecodeFrameWithOutputHandler(session,
-                                                                              sampleBuffer: sampleBuffer,
-                                                                              flags: [],
-                                                                              infoFlagsOut: nil) { [weak self] _, _, imageBuffer, _, _ in
-            guard let self = self, let imageBuffer = imageBuffer else { return }
-            self.renderFrame(imageBuffer)
-        }
+        let decodeStatus = VTDecompressionSessionDecodeFrame(session,
+                                                             sampleBuffer: sampleBuffer,
+                                                             flags: [],
+                                                             infoFlagsOut: nil)
         if decodeStatus != noErr {
             onLog?("解码失败: \(decodeStatus)")
         }

@@ -200,8 +200,8 @@ final class AdbPairingClient: @unchecked Sendable {
                                               using: symmetricKey,
                                               nonce: gcmNonce,
                                               authenticating: Data(Self.pairingHeader))
+                // combined 已包含 nonce(12) + ciphertext + tag(16)
                 var packet = Data(Self.pairingHeader)
-                packet.append(context.nonce)
                 packet.append(sealed.combined ?? Data())
                 conn.send(content: packet, completion: .contentProcessed { err in
                     if let err = err {
@@ -231,11 +231,11 @@ final class AdbPairingClient: @unchecked Sendable {
                 return
             }
             do {
-                let sealed = try AES.GCM.SealedBox(combined: combined)
-                let gcmNonce = try AES.GCM.Nonce(data: packetNonce)
+                // 解密：将 nonce 合并回 combined，由 SealedBox 携带 nonce
+                let fullCombined = packetNonce + combined
+                let sealed = try AES.GCM.SealedBox(combined: fullCombined)
                 let plaintext = try AES.GCM.open(sealed,
                                                  using: key,
-                                                 nonce: gcmNonce,
                                                  authenticating: Data(Self.pairingHeader))
                 guard plaintext.count >= 8 else {
                     finish(.failure(PairingError.invalidResponse))
