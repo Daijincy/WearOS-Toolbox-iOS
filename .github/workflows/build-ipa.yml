@@ -1,0 +1,121 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode (latest)
+        run: |
+          ls /Applications | grep -i xcode || true
+          sudo xcode-select -s /Applications/Xcode_26.2.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_26.1.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_26.0.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i ios || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Import signing certificate
+        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' }}
+        env:
+          DEVELOPER_CERTIFICATE: ${{ secrets.DEVELOPER_CERTIFICATE }}
+          DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          CERT_PATH=$RUNNER_TEMP/developer_cert.p12
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          echo "$DEVELOPER_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          echo "$PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$DEVELOPER_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$(uuidgen).mobileprovision"
+
+      - name: Build Archive (signed)
+        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' }}
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+        run: |
+          xcodebuild archive \
+            -project WearOSBox.xcodeproj \
+            -scheme WearOSBox \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/WearOSBox.xcarchive" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Development" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISIONING_PROFILE_NAME }}" \
+            ENABLE_BITCODE=NO \
+            -allowProvisioningUpdates || echo "SIGNED_BUILD_FAILED=1" >> $GITHUB_ENV
+
+      - name: Export IPA (signed)
+        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' && env.SIGNED_BUILD_FAILED != '1' }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>development</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
+            <key>stripSwiftSymbols</key><true/>
+            <key>uploadSymbols</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/WearOSBox.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+
+      - name: Build unsigned fallback
+        if: ${{ secrets.DEVELOPER_CERTIFICATE == '' || env.SIGNED_BUILD_FAILED == '1' }}
+        run: |
+          xcodebuild build \
+            -project WearOSBox.xcodeproj \
+            -scheme WearOSBox \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO || true
+          mkdir -p "$RUNNER_TEMP/export/Payload"
+          APP_PATH=$(find "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos" -name "*.app" -maxdepth 1 | head -1)
+          if [ -n "$APP_PATH" ]; then
+            cp -R "$APP_PATH" "$RUNNER_TEMP/export/Payload/"
+            cd "$RUNNER_TEMP/export" && zip -r "WearOSBox-unsigned.ipa" Payload
+            echo "UNSIGNED_IPA=1" >> $GITHUB_ENV
+          else
+            echo "BUILD_ARTIFACT_MISSING=1" >> $GITHUB_ENV
+          fi
+
+      - name: List output
+        run: |
+          ls -la "$RUNNER_TEMP/export/" || true
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WearOSBox-IPA
+          path: |
+            ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: error
