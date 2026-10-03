@@ -9,15 +9,26 @@ on:
 jobs:
   build-ipa:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect signing config
+        id: signing
+        env:
+          HAS_CERT: ${{ secrets.DEVELOPER_CERTIFICATE != '' }}
+        run: |
+          echo "HAS_CERT=${HAS_CERT}" >> "$GITHUB_OUTPUT"
+          echo "Signing secrets configured: ${HAS_CERT}"
+
       - name: Select Xcode (latest)
         run: |
-          ls /Applications | grep -i xcode || true
-          sudo xcode-select -s /Applications/Xcode_26.2.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_26.1.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_26.0.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          sudo xcode-select -s /Applications/Xcode_26.2.app 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.1.app 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_26.0.app 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app 2>/dev/null \
+            || true
           xcodebuild -version
           xcodebuild -showsdks | grep -i ios || true
 
@@ -28,7 +39,7 @@ jobs:
         run: xcodegen generate
 
       - name: Import signing certificate
-        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' }}
+        if: steps.signing.outputs.HAS_CERT == 'true'
         env:
           DEVELOPER_CERTIFICATE: ${{ secrets.DEVELOPER_CERTIFICATE }}
           DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_CERTIFICATE_PASSWORD }}
@@ -50,10 +61,13 @@ jobs:
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$(uuidgen).mobileprovision"
 
       - name: Build Archive (signed)
-        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' }}
+        id: archive
+        if: steps.signing.outputs.HAS_CERT == 'true'
         env:
           DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+          PROVISIONING_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
         run: |
+          set +e
           xcodebuild archive \
             -project WearOSBox.xcodeproj \
             -scheme WearOSBox \
@@ -63,12 +77,17 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Development" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISIONING_PROFILE_NAME }}" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_NAME" \
             ENABLE_BITCODE=NO \
-            -allowProvisioningUpdates || echo "SIGNED_BUILD_FAILED=1" >> $GITHUB_ENV
+            -allowProvisioningUpdates
+          EXIT_CODE=$?
+          echo "ARCHIVE_EXIT=$EXIT_CODE" >> "$GITHUB_ENV"
+          exit $EXIT_CODE
 
       - name: Export IPA (signed)
-        if: ${{ secrets.DEVELOPER_CERTIFICATE != '' && env.SIGNED_BUILD_FAILED != '1' }}
+        if: steps.signing.outputs.HAS_CERT == 'true' && env.ARCHIVE_EXIT == '0'
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -77,7 +96,7 @@ jobs:
           <dict>
             <key>method</key><string>development</string>
             <key>signingStyle</key><string>manual</string>
-            <key>teamID</key><string>${{ secrets.DEVELOPMENT_TEAM }}</string>
+            <key>teamID</key><string>$DEVELOPMENT_TEAM</string>
             <key>stripSwiftSymbols</key><true/>
             <key>uploadSymbols</key><false/>
           </dict>
@@ -89,24 +108,28 @@ jobs:
             -exportPath "$RUNNER_TEMP/export"
 
       - name: Build unsigned fallback
-        if: ${{ secrets.DEVELOPER_CERTIFICATE == '' || env.SIGNED_BUILD_FAILED == '1' }}
+        if: steps.signing.outputs.HAS_CERT != 'true' || env.ARCHIVE_EXIT != '0'
         run: |
+          set +e
           xcodebuild build \
             -project WearOSBox.xcodeproj \
             -scheme WearOSBox \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/dd" \
-            CODE_SIGNING_ALLOWED=NO || true
+            CODE_SIGNING_ALLOWED=NO
+          BUILD_EXIT=$?
+          echo "BUILD_EXIT=$BUILD_EXIT" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/export/Payload"
           APP_PATH=$(find "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos" -name "*.app" -maxdepth 1 | head -1)
           if [ -n "$APP_PATH" ]; then
             cp -R "$APP_PATH" "$RUNNER_TEMP/export/Payload/"
             cd "$RUNNER_TEMP/export" && zip -r "WearOSBox-unsigned.ipa" Payload
-            echo "UNSIGNED_IPA=1" >> $GITHUB_ENV
+            echo "UNSIGNED_IPA=1" >> "$GITHUB_ENV"
           else
-            echo "BUILD_ARTIFACT_MISSING=1" >> $GITHUB_ENV
+            echo "BUILD_ARTIFACT_MISSING=1" >> "$GITHUB_ENV"
           fi
+          exit $BUILD_EXIT
 
       - name: List output
         run: |
