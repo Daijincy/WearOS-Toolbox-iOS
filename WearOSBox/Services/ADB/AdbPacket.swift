@@ -73,7 +73,7 @@ struct AdbPacket {
         let magic = data.readUInt32(at: offset + 20 + length)
 
         // 校验 CRC 与 magic
-        let crc = UInt32(zlib.crc32(0, [UInt8](payload), uInt(payload.count)))
+        let crcCalc = UInt32(zlib.crc32(0, [UInt8](payload), uInt(payload.count)))
         guard crc == crcCalc else {
             return (nil, 0)
         }

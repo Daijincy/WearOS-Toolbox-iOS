@@ -195,17 +195,14 @@ final class AdbPairingClient: @unchecked Sendable {
                 plaintext.append(body)
 
                 incrementNonce(&context.nonce)
-                guard let gcmNonce = AES.GCM.Nonce(data: context.nonce) else {
-                    finish(.failure(PairingError.encryptionFailed))
-                    return
-                }
+                let gcmNonce = try AES.GCM.Nonce(data: context.nonce)
                 let sealed = try AES.GCM.seal(plaintext,
                                               using: symmetricKey,
                                               nonce: gcmNonce,
                                               authenticating: Data(Self.pairingHeader))
                 var packet = Data(Self.pairingHeader)
                 packet.append(context.nonce)
-                packet.append(sealed.combined)
+                packet.append(sealed.combined ?? Data())
                 conn.send(content: packet, completion: .contentProcessed { err in
                     if let err = err {
                         finish(.failure(PairingError.connectionFailed(err.localizedDescription)))
@@ -235,10 +232,7 @@ final class AdbPairingClient: @unchecked Sendable {
             }
             do {
                 let sealed = try AES.GCM.SealedBox(combined: combined)
-                guard let gcmNonce = AES.GCM.Nonce(data: packetNonce) else {
-                    finish(.failure(PairingError.invalidResponse))
-                    return
-                }
+                let gcmNonce = try AES.GCM.Nonce(data: packetNonce)
                 let plaintext = try AES.GCM.open(sealed,
                                                  using: key,
                                                  nonce: gcmNonce,

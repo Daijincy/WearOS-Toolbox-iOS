@@ -182,7 +182,7 @@ final class AdbOps {
             switch result {
             case .success(let out):
                 if out.output.contains("Success") {
-                    self.writeSplitParts(sessionID: sessionID, remotePaths: remotePaths, index: index + 1, completion: completion)
+                    self.writeSplitParts(sessionID: sessionID, items: items, index: index + 1, completion: completion)
                 } else {
                     completion(.failure(AdbError.connectionFailed("写入 split 失败：\(out.output)")))
                 }

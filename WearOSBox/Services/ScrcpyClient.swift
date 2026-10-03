@@ -244,8 +244,8 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
         var fd: CMVideoFormatDescription?
         let status = sps.withUnsafeBytes { spsPtr in
             pps.withUnsafeBytes { ppsPtr in
-                var spsParam = [spsPtr.baseAddress!]
-                var ppsParam = [ppsPtr.baseAddress!]
+                var spsParam = [spsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)]
+                var ppsParam = [ppsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)]
                 var spsSizes = [sps.count]
                 var ppsSizes = [pps.count]
                 return CMVideoFormatDescriptionCreateFromH264ParameterSets(
@@ -268,8 +268,8 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
     private func createDecodeSession() {
         guard let fd = formatDescription else { return }
         var session: VTDecompressionSession?
-        let callback = VTDecompressionOutputCallbackRecord(
-            decompressionOutputCallback: { _, _, _, _, _ in },
+        var callback = VTDecompressionOutputCallbackRecord(
+            decompressionOutputCallback: { _, _, _, _, _, _, _ in },
             decompressionOutputRefCon: nil)
         let status = VTDecompressionSessionCreate(
             allocator: kCFAllocatorDefault,
@@ -279,7 +279,7 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
                 kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferOpenGLCompatibilityKey: true
             ] as CFDictionary,
-            outputHandler: &callback,
+            outputCallback: &callback,
             decompressionSessionOut: &session)
         guard status == noErr, let session = session else {
             onLog?("解码会话创建失败: \(status)")
@@ -326,8 +326,10 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
             sampleBufferOut: &sampleBuffer)
         guard sampleStatus == noErr, let sampleBuffer = sampleBuffer else { return }
 
-        let decodeStatus = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sampleBuffer,
-                                                             flags: [], infoFlagsOut: nil) { [weak self] _, _, imageBuffer, _, _ in
+        let decodeStatus = VTDecompressionSessionDecodeFrameWithOutputHandler(session,
+                                                                              sampleBuffer: sampleBuffer,
+                                                                              flags: [],
+                                                                              infoFlagsOut: nil) { [weak self] _, _, imageBuffer, _, _ in
             guard let self = self, let imageBuffer = imageBuffer else { return }
             self.renderFrame(imageBuffer)
         }
@@ -417,6 +419,6 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
 extension Data {
     mutating func appendUInt64(_ value: UInt64) {
         var v = value.littleEndian
-        withUnsafeBytes(of: &v) { append(contentsOf: $0) }
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
 }

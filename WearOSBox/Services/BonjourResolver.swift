@@ -36,9 +36,9 @@ final class BonjourResolver {
         let callback: DNSServiceResolveReply = { _, _, _, errorCode, _, hosttarget, port, _, _, context in
             guard let context = context else { return }
             let c = Unmanaged<ResolveContext>.fromOpaque(context).takeUnretainedValue()
-            if errorCode == kDNSServiceErr_NoError {
+            if errorCode == DNSServiceErrorType(kDNSServiceErr_NoError) {
                 c.lock.lock()
-                c.hostname = String(cString: hosttarget)
+                c.hostname = hosttarget.map { String(cString: $0) } ?? ""
                 c.port = port.bigEndian
                 c.resolvedFlag = true
                 c.lock.unlock()
@@ -87,7 +87,7 @@ final class BonjourResolver {
         let callback: DNSServiceGetAddrInfoReply = { _, _, _, errorCode, _, sockaddr, _, context in
             guard let context = context, let sockaddr = sockaddr else { return }
             let c = Unmanaged<AddrContext>.fromOpaque(context).takeUnretainedValue()
-            if errorCode == kDNSServiceErr_NoError && sockaddr.pointee.sa_family == sa_family_t(AF_INET) {
+            if errorCode == DNSServiceErrorType(kDNSServiceErr_NoError) && sockaddr.pointee.sa_family == sa_family_t(AF_INET) {
                 var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
                 var addr4 = sockaddr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
                 _ = inet_ntop(AF_INET, &addr4.sin_addr, &buffer, socklen_t(buffer.count))
@@ -99,7 +99,7 @@ final class BonjourResolver {
             c.semaphore.signal()
         }
 
-        let err = DNSServiceGetAddrInfo(&addrRef, 0, 0, kDNSServiceProtocol_IPv4,
+        let err = DNSServiceGetAddrInfo(&addrRef, 0, 0, DNSServiceProtocol(kDNSServiceProtocol_IPv4),
                                         hostname, callback, contextPtr)
         guard err == kDNSServiceErr_NoError, let ref = addrRef else {
             Unmanaged<AddrContext>.fromOpaque(contextPtr).release()
