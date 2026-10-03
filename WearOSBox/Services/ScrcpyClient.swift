@@ -334,7 +334,10 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
         let decodeStatus = VTDecompressionSessionDecodeFrame(session,
                                                              sampleBuffer: sampleBuffer,
                                                              flags: [],
-                                                             infoFlagsOut: nil)
+                                                             infoFlagsOut: nil) { [weak self] _, _, imageBuffer, _, _ in
+            guard let self = self, let imageBuffer = imageBuffer else { return }
+            self.renderFrame(imageBuffer)
+        }
         if decodeStatus != noErr {
             onLog?("解码失败: \(decodeStatus)")
         }
