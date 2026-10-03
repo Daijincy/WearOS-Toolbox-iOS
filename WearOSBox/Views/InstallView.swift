@@ -73,15 +73,15 @@ struct InstallView: View {
         let accessing = url.startAccessingSecurityScopedResource()
         ops.installAPK(apkURL: url, progress: { p in
             DispatchQueue.main.async { self.progress = p }
-        }) { [weak self] result in
+        }) { result in
             if accessing { url.stopAccessingSecurityScopedResource() }
             DispatchQueue.main.async {
-                self?.isInstalling = false
+                self.isInstalling = false
                 switch result {
                 case .success(let out):
-                    self?.resultText = "安装成功\n\n\(out)"
+                    self.resultText = "安装成功\n\n\(out)"
                 case .failure(let err):
-                    self?.resultText = "安装失败：\(err.localizedDescription)"
+                    self.resultText = "安装失败：\(err.localizedDescription)"
                 }
             }
         }

@@ -93,14 +93,14 @@ struct BatteryView: View {
     private func load() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.batteryInfo { [weak self] result in
+        ops.batteryInfo { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let dict):
-                    self?.info = dict
+                    self.info = dict
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }

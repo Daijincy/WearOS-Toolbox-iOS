@@ -77,14 +77,14 @@ struct AppManagerView: View {
     private func load() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.listPackages { [weak self] result in
+        ops.listPackages { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let list):
-                    self?.packages = list
+                    self.packages = list
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }
@@ -92,13 +92,13 @@ struct AppManagerView: View {
 
     private func uninstall(_ package: String) {
         guard let ops = session.ops else { return }
-        ops.uninstall(package: package) { [weak self] result in
+        ops.uninstall(package: package) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.load()
+                    self.load()
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }
@@ -106,13 +106,13 @@ struct AppManagerView: View {
 
     private func clearData(_ package: String) {
         guard let ops = session.ops else { return }
-        ops.clearAppData(package: package) { [weak self] result in
+        ops.clearAppData(package: package) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.errorMessage = "已清除 \(package) 的数据"
+                    self.errorMessage = "已清除 \(package) 的数据"
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }

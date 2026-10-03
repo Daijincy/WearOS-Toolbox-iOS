@@ -1,10 +1,10 @@
 import Foundation
 import Network
 
-/// 局域网扫描：mDNS 发现无线调试服务
+/// 局域网扫描：mDNS 发现无线调试服务并解析 IP/端口
 /// 服务类型：
-///   _adb-tls-pairing._tcp  - 配对服务（37000 端口）
-///   _adb-tls-connect._tcp   - 连接服务（无线调试端口）
+///   _adb-tls-pairing._tcp  - 配对服务
+///   _adb-tls-connect._tcp   - 连接服务
 final class DeviceScanner: ObservableObject {
     struct ScannedDevice: Identifiable, Equatable {
         let name: String
@@ -22,6 +22,7 @@ final class DeviceScanner: ObservableObject {
 
     private var pairingBrowser: NWBrowser?
     private var connectBrowser: NWBrowser?
+    private var resolveQueue = DispatchQueue(label: "scanner.resolve.queue")
 
     func startScanning() {
         guard !isScanning else { return }
@@ -40,8 +41,8 @@ final class DeviceScanner: ObservableObject {
         pairingBrowser?.start(queue: .global())
         connectBrowser?.start(queue: .global())
 
-        // 5 秒后自动停止
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        // 8 秒后自动停止
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
             self?.stopScanning()
         }
     }
@@ -55,20 +56,25 @@ final class DeviceScanner: ObservableObject {
     }
 
     private func handleResults(_ results: Set<NWBrowser.Result>, isPairing: Bool) {
-        var found: [ScannedDevice] = []
         for result in results {
-            guard case .service(let name, _, _, _) = result.endpoint,
-                  case .hostPort(let host, let port)? = result.endpoint.destination?() else { continue }
-            let device = ScannedDevice(name: name, host: "\(host)", port: Int(port.rawValue), isPairingService: isPairing)
-            if !found.contains(device) {
-                found.append(device)
-            }
-        }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            for device in found where !self.devices.contains(device) {
-                self.devices.append(device)
-                self.onLog?("扫描到设备: \(device.name) \(device.host):\(device.port) \(isPairing ? "(配对)" : "(连接)")")
+            guard case .service(let name, let regType, let domain, _) = result.endpoint else { continue }
+            let type = String(describing: regType)
+            resolveQueue.async { [weak self] in
+                guard let self = self else { return }
+                // DNS-SD 解析：获取 hostname + 端口 + IPv4
+                if let resolved = BonjourResolver.resolve(name: name, regType: type, domain: String(describing: domain)) {
+                    let ip = resolved.ipv4 ?? resolved.hostname
+                    let device = ScannedDevice(name: name,
+                                               host: ip,
+                                               port: Int(resolved.port),
+                                               isPairingService: isPairing)
+                    DispatchQueue.main.async {
+                        if !self.devices.contains(device) {
+                            self.devices.append(device)
+                            self.onLog?("扫描到设备: \(device.host):\(device.port) \(isPairing ? "(配对)" : "(连接)")")
+                        }
+                    }
+                }
             }
         }
     }

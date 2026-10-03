@@ -112,14 +112,14 @@ struct FileManagerView: View {
         guard let ops = session.ops else { return }
         isLoading = true
         currentPath = path
-        ops.listRemote(path: path) { [weak self] result in
+        ops.listRemote(path: path) { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let list):
-                    self?.files = list
+                    self.files = list
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }
@@ -142,13 +142,13 @@ struct FileManagerView: View {
     private func delete(_ file: RemoteFile) {
         guard let ops = session.ops else { return }
         let path = currentPath == "/" ? "/\(file.name)" : "\(currentPath)/\(file.name)"
-        ops.removeRemote(path: path) { [weak self] result in
+        ops.removeRemote(path: path) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.load(path: self?.currentPath ?? "/sdcard")
+                    self.load(path: self.currentPath ?? "/sdcard")
                 case .failure(let err):
-                    self?.errorMessage = err.localizedDescription
+                    self.errorMessage = err.localizedDescription
                 }
             }
         }
@@ -157,13 +157,13 @@ struct FileManagerView: View {
     private func download(_ file: RemoteFile) {
         guard let ops = session.ops else { return }
         let remote = currentPath == "/" ? "/\(file.name)" : "\(currentPath)/\(file.name)"
-        ops.sync.pull(remotePath: remote) { [weak self] result in
+        ops.sync.pull(remotePath: remote) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let data):
-                    self?.saveToFiles(data, name: file.name)
+                    self.saveToFiles(data, name: file.name)
                 case .failure(let err):
-                    self?.errorMessage = "下载失败：\(err.localizedDescription)"
+                    self.errorMessage = "下载失败：\(err.localizedDescription)"
                 }
             }
         }
@@ -187,14 +187,14 @@ struct FileManagerView: View {
             let url = remaining.removeFirst()
             let accessing = url.startAccessingSecurityScopedResource()
             let remote = currentPath == "/" ? "/\(url.lastPathComponent)" : "\(currentPath)/\(url.lastPathComponent)"
-            ops.sync.push(fileURL: url, remotePath: remote) { [weak self] result in
+            ops.sync.push(fileURL: url, remotePath: remote) { result in
                 if accessing { url.stopAccessingSecurityScopedResource() }
                 switch result {
                 case .success:
-                    self?.load(path: self?.currentPath ?? "/sdcard")
+                    self.load(path: self.currentPath ?? "/sdcard")
                     next()
                 case .failure(let err):
-                    self?.errorMessage = "上传失败：\(err.localizedDescription)"
+                    self.errorMessage = "上传失败：\(err.localizedDescription)"
                 }
             }
         }

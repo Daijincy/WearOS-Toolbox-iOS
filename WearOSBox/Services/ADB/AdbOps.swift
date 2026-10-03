@@ -98,11 +98,11 @@ final class AdbOps {
         // 1. 全部推送到设备
         let remoteDir = "/data/local/tmp/wearosbox_split"
         let fileNames = apkURLs.enumerated().map { "\($0.offset).apk" }
-        var remotePaths: [String] = []
+        var items: [(localURL: URL, remotePath: String)] = []
 
         func pushNext(index: Int) {
             guard index < apkURLs.count else {
-                installSplitSession(remotePaths: remotePaths, completion: completion)
+                installSplitSession(items: items, completion: completion)
                 return
             }
             guard let data = try? Data(contentsOf: apkURLs[index]) else {
@@ -110,7 +110,7 @@ final class AdbOps {
                 return
             }
             let remote = "\(remoteDir)/\(fileNames[index])"
-            remotePaths.append(remote)
+            items.append((localURL: apkURLs[index], remotePath: remote))
             sync.push(data: data, remotePath: remote) { result in
                 switch result {
                 case .success:
@@ -127,9 +127,10 @@ final class AdbOps {
     }
 
     /// 创建安装会话并逐个写入 split 包
-    private func installSplitSession(remotePaths: [String], completion: @escaping (Result<String, Error>) -> Void) {
-        let totalSize = remotePaths.reduce(0) { size, path in
-            size + ((try? Data(contentsOf: URL(fileURLWithPath: path)))?.count ?? 0)
+    private func installSplitSession(items: [(localURL: URL, remotePath: String)],
+                                     completion: @escaping (Result<String, Error>) -> Void) {
+        let totalSize = items.reduce(0) { size, item in
+            size + ((try? Data(contentsOf: item.localURL))?.count ?? 0)
         }
         shell.execute(command: "pm install-create -S \(totalSize)") { [weak self] result in
             guard let self = self else { return }
@@ -139,7 +140,7 @@ final class AdbOps {
                     completion(.failure(AdbError.connectionFailed("创建安装会话失败：\(out.output)")))
                     return
                 }
-                self.writeSplitParts(sessionID: sessionID, remotePaths: remotePaths, index: 0) { writeResult in
+                self.writeSplitParts(sessionID: sessionID, items: items, index: 0) { writeResult in
                     switch writeResult {
                     case .success:
                         self.shell.execute(command: "pm install-commit \(sessionID)") { commitResult in
@@ -166,14 +167,15 @@ final class AdbOps {
         }
     }
 
-    private func writeSplitParts(sessionID: String, remotePaths: [String], index: Int,
+    private func writeSplitParts(sessionID: String, items: [(localURL: URL, remotePath: String)], index: Int,
                                  completion: @escaping (Result<Void, Error>) -> Void) {
-        guard index < remotePaths.count else {
+        guard index < items.count else {
             completion(.success(()))
             return
         }
-        let path = remotePaths[index]
-        let size = (try? Data(contentsOf: URL(fileURLWithPath: path)))?.count ?? 0
+        let item = items[index]
+        let path = item.remotePath
+        let size = (try? Data(contentsOf: item.localURL))?.count ?? 0
         let name = "split\(index).apk"
         shell.execute(command: "pm install-write -S \(size) \(sessionID) \(name) \(path)") { [weak self] result in
             guard let self = self else { return }

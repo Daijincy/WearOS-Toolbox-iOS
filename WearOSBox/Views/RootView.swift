@@ -209,12 +209,12 @@ struct RootView: View {
         }
         let ip = ipText.trimmingCharacters(in: .whitespaces)
         let port = Int(portText.trimmingCharacters(in: .whitespaces)) ?? 0
-        session.connect(profile: profile, ip: ip, port: port) { [weak self] result in
+        session.connect(profile: profile, ip: ip, port: port) { result in
             switch result {
             case .success:
                 break // 已连接，触发导航
             case .failure(let err):
-                self?.errorMessage = err.localizedDescription
+                self.errorMessage = err.localizedDescription
             }
         }
     }
@@ -224,17 +224,17 @@ struct RootView: View {
         modelContext.insert(profile)
         try? modelContext.save()
 
-        session.pair(profile: profile, code: code) { [weak self] result in
+        session.pair(profile: profile, code: code) { result in
             switch result {
             case .success:
-                self?.selectedProfile = profile
-                self?.ipText = ip
-                self?.portText = String(port)
+                self.selectedProfile = profile
+                self.ipText = ip
+                self.portText = String(port)
             case .failure(let err):
-                self?.errorMessage = "配对失败：\(err.localizedDescription)"
+                self.errorMessage = "配对失败：\(err.localizedDescription)"
                 // 配对失败则移除档案
-                self?.modelContext.delete(profile)
-                try? self?.modelContext.save()
+                self.modelContext.delete(profile)
+                try? self.modelContext.save()
             }
         }
     }

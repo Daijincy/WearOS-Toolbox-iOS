@@ -65,15 +65,15 @@ struct ScreenToolsView: View {
     private func load() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.screenInfo { [weak self] result in
+        ops.screenInfo { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let info):
-                    self?.currentSize = info.size
-                    self?.currentDensity = info.density
+                    self.currentSize = info.size
+                    self.currentDensity = info.density
                 case .failure(let err):
-                    self?.message = err.localizedDescription
+                    self.message = err.localizedDescription
                 }
             }
         }
@@ -82,12 +82,12 @@ struct ScreenToolsView: View {
     private func applySize() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.setScreenSize(newSize.trimmingCharacters(in: .whitespaces)) { [weak self] result in
+        ops.setScreenSize(newSize.trimmingCharacters(in: .whitespaces)) { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
-                case .success(let out): self?.message = "分辨率设置完成：\(out)"
-                case .failure(let err): self?.message = err.localizedDescription
+                case .success(let out): self.message = "分辨率设置完成：\(out)"
+                case .failure(let err): self.message = err.localizedDescription
                 }
             }
         }
@@ -96,12 +96,12 @@ struct ScreenToolsView: View {
     private func applyDensity() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.setScreenDensity(newDensity.trimmingCharacters(in: .whitespaces)) { [weak self] result in
+        ops.setScreenDensity(newDensity.trimmingCharacters(in: .whitespaces)) { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
-                case .success(let out): self?.message = "DPI 设置完成：\(out)"
-                case .failure(let err): self?.message = err.localizedDescription
+                case .success(let out): self.message = "DPI 设置完成：\(out)"
+                case .failure(let err): self.message = err.localizedDescription
                 }
             }
         }
@@ -110,11 +110,11 @@ struct ScreenToolsView: View {
     private func restoreDefaults() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.setScreenSize(nil) { [weak self] sizeResult in
+        ops.setScreenSize(nil) { sizeResult in
             ops.setScreenDensity(nil) { densityResult in
                 DispatchQueue.main.async {
-                    self?.isLoading = false
-                    self?.message = "已恢复默认设置"
+                    self.isLoading = false
+                    self.message = "已恢复默认设置"
                 }
             }
         }

@@ -50,14 +50,14 @@ struct ClipboardView: View {
 
     private func readWatch() {
         guard let ops = session.ops else { return }
-        ops.getClipboard { [weak self] result in
+        ops.getClipboard { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let text):
-                    self?.watchText = text
-                    self?.message = text.isEmpty ? "手表剪贴板为空" : "读取成功"
+                    self.watchText = text
+                    self.message = text.isEmpty ? "手表剪贴板为空" : "读取成功"
                 case .failure(let err):
-                    self?.message = "读取失败：\(err.localizedDescription)"
+                    self.message = "读取失败：\(err.localizedDescription)"
                 }
             }
         }
@@ -65,13 +65,13 @@ struct ClipboardView: View {
 
     private func writeWatch() {
         guard let ops = session.ops, !inputText.isEmpty else { return }
-        ops.setClipboard(inputText) { [weak self] result in
+        ops.setClipboard(inputText) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.message = "已推送到手表"
+                    self.message = "已推送到手表"
                 case .failure(let err):
-                    self?.message = "写入失败：\(err.localizedDescription)"
+                    self.message = "写入失败：\(err.localizedDescription)"
                 }
             }
         }

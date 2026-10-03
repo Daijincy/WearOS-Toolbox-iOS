@@ -227,21 +227,21 @@ struct ScreenView: View {
         }
         isCapturing = true
         statusText = "截图中…"
-        ops.screencap { [weak self] result in
+        ops.screencap { result in
             DispatchQueue.main.async {
-                self?.isCapturing = false
+                self.isCapturing = false
                 switch result {
                 case .success(let data):
                     if let image = UIImage(data: data) {
-                        self?.snapshotImage = image
-                        self?.statusText = "截图完成"
+                        self.snapshotImage = image
+                        self.statusText = "截图完成"
                     } else {
-                        self?.message = "截图数据解析失败"
-                        self?.statusText = "截图失败"
+                        self.message = "截图数据解析失败"
+                        self.statusText = "截图失败"
                     }
                 case .failure(let err):
-                    self?.message = err.localizedDescription
-                    self?.statusText = "截图失败"
+                    self.message = err.localizedDescription
+                    self.statusText = "截图失败"
                 }
             }
         }
@@ -259,14 +259,14 @@ struct ScreenView: View {
             scrcpy.onLog = { AppLogger.shared.log($0, level: .adb) }
             statusText = "镜像启动中…"
             scrcpy.start(adb: client, host: host,
-                         fps: Int(fps), bitRate: Int(bitRate * 1_000_000)) { [weak self] result in
+                         fps: Int(fps), bitRate: Int(bitRate * 1_000_000)) { result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        self?.statusText = "镜像运行中"
+                        self.statusText = "镜像运行中"
                     case .failure(let err):
-                        self?.statusText = "镜像已停止"
-                        self?.message = err.localizedDescription
+                        self.statusText = "镜像已停止"
+                        self.message = err.localizedDescription
                     }
                 }
             }

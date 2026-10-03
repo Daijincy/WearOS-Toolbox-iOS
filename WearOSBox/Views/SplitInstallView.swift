@@ -80,15 +80,15 @@ struct SplitInstallView: View {
         progressText = "正在推送 \(selectedURLs.count) 个文件到设备…"
         // 保持安全作用域访问
         let accessed = selectedURLs.map { $0.startAccessingSecurityScopedResource() }
-        ops.installSplitAPK(apkURLs: selectedURLs) { [weak self] result in
+        ops.installSplitAPK(apkURLs: selectedURLs) { result in
             selectedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
             DispatchQueue.main.async {
-                self?.isInstalling = false
+                self.isInstalling = false
                 switch result {
                 case .success(let out):
-                    self?.resultText = "安装成功\n\n\(out)"
+                    self.resultText = "安装成功\n\n\(out)"
                 case .failure(let err):
-                    self?.resultText = "安装失败：\(err.localizedDescription)"
+                    self.resultText = "安装失败：\(err.localizedDescription)"
                 }
             }
         }

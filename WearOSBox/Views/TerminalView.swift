@@ -90,11 +90,11 @@ struct TerminalView: View {
         guard let client = session.client, !isActive else { return }
         isActive = true
         appendOutput("> 打开交互式终端…")
-        let id = AdbShell(client: client).openInteractive { [weak self] text in
-            self?.appendOutput(text)
-        } onExit: { [weak self] code in
-            self?.appendOutput("\n[进程退出，退出码 \(code)]")
-            self?.isActive = false
+        let id = AdbShell(client: client).openInteractive { text in
+            self.appendOutput(text)
+        } onExit: { code in
+            self.appendOutput("\n[进程退出，退出码 \(code)]")
+            self.isActive = false
         }
         channelID = id
         if id == nil {

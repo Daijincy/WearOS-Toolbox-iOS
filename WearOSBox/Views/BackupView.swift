@@ -71,14 +71,14 @@ struct BackupView: View {
     private func loadPackages() {
         guard let ops = session.ops else { return }
         isLoading = true
-        ops.listPackages { [weak self] result in
+        ops.listPackages { result in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                self.isLoading = false
                 switch result {
                 case .success(let list):
-                    self?.packages = list
+                    self.packages = list
                 case .failure(let err):
-                    self?.message = err.localizedDescription
+                    self.message = err.localizedDescription
                 }
             }
         }
@@ -89,13 +89,13 @@ struct BackupView: View {
         let list = selectedPackages.sorted().joined(separator: " ")
         let cmd = "pm backup -apk -shared \(list)"
         let shell = AdbShell(client: session.client!)
-        shell.execute(command: cmd, timeout: 60) { [weak self] result in
+        shell.execute(command: cmd, timeout: 60) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let out):
-                    self?.message = "备份命令已执行\n\(out.output)"
+                    self.message = "备份命令已执行\n\(out.output)"
                 case .failure(let err):
-                    self?.message = "备份失败：\(err.localizedDescription)"
+                    self.message = "备份失败：\(err.localizedDescription)"
                 }
             }
         }

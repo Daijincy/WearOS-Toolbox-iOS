@@ -69,16 +69,16 @@ struct CommandView: View {
         history.append(cmd)
 
         let shell = AdbShell(client: session.client!)
-        shell.execute(command: cmd) { [weak self] result in
+        shell.execute(command: cmd) { result in
             DispatchQueue.main.async {
-                self?.isRunning = false
+                self.isRunning = false
                 switch result {
                 case .success(let out):
-                    self?.resultText = out.output.isEmpty ? "(无输出)" : out.output
-                    self?.exitCode = out.exitCode
+                    self.resultText = out.output.isEmpty ? "(无输出)" : out.output
+                    self.exitCode = out.exitCode
                 case .failure(let err):
-                    self?.resultText = "[错误] \(err.localizedDescription)"
-                    self?.exitCode = -1
+                    self.resultText = "[错误] \(err.localizedDescription)"
+                    self.exitCode = -1
                 }
             }
         }

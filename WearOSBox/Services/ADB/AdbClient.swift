@@ -106,8 +106,10 @@ final class AdbClient: @unchecked Sendable {
         func finish(_ result: Result<String, Error>) {
             guard !didComplete else { return }
             didComplete = true
+            self.connectCompletion = nil
             completion(result)
         }
+        self.connectCompletion = completion
 
         conn.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
@@ -132,7 +134,7 @@ final class AdbClient: @unchecked Sendable {
         // 超时
         queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
             guard let self = self, !didComplete else { return }
-            if !self.isConnected {
+            if self.connectCompletion != nil {
                 self.disconnect()
                 finish(.failure(AdbError.timeout))
             }
@@ -186,7 +188,9 @@ final class AdbClient: @unchecked Sendable {
             onLog?("CNXN 收到 system=\(system)")
             // 认证完成
             isConnected = true
-            onAuthenticated?(system)
+            let completion = connectCompletion
+            connectCompletion = nil
+            completion?(.success(system))
         case .auth:
             handleAuth(packet)
         case .open:
@@ -207,8 +211,8 @@ final class AdbClient: @unchecked Sendable {
         }
     }
 
-    /// 认证完成回调（CNXN 收到后调用）
-    var onAuthenticated: ((String) -> Void)?
+    /// 连接完成回调（CNXN 收到后调用成功，失败/超时调用失败）
+    private var connectCompletion: ((Result<String, Error>) -> Void)?
 
     private func handleAuth(_ packet: AdbPacket) {
         let authType = AdbPacket.AuthType(rawValue: packet.arg0) ?? .token
@@ -252,7 +256,7 @@ final class AdbClient: @unchecked Sendable {
     /// 发送 RSA 公钥请求设备授权（AUTH(3)）
     private func sendAuthPublicKey(_ key: AdbKeyPair) {
         onLog?("AUTH(3) 发送 RSA 公钥（等待设备授权）")
-        sendPacket(AdbPacket(command: .auth, arg0: AuthType.rsaPublicKey.rawValue, payload: key.publicKeyPEM))
+        sendPacket(AdbPacket(command: .auth, arg0: AdbPacket.AuthType.rsaPublicKey.rawValue, payload: key.publicKeyPEM))
     }
 
     // MARK: - 发送
@@ -315,6 +319,10 @@ final class AdbClient: @unchecked Sendable {
         channels.removeAll()
         chans.forEach { $0.close() }
         isConnected = false
+        if let completion = connectCompletion {
+            connectCompletion = nil
+            completion(.failure(AdbError.connectionFailed(error?.localizedDescription ?? "连接已断开")))
+        }
     }
 
     // MARK: - RSA 密钥
@@ -324,8 +332,7 @@ final class AdbClient: @unchecked Sendable {
         let attributes: [CFString: Any] = [
             kSecAttrKeyType: kSecAttrKeyTypeRSA,
             kSecAttrKeySizeInBits: 2048,
-            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-            kSecAttrPermanent: false
+            kSecAttrKeyClass: kSecAttrKeyClassPrivate
         ]
         var err: Unmanaged<CFError>?
         guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, &err) else {

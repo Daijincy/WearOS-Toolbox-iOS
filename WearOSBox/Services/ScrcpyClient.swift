@@ -121,25 +121,26 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
             guard let self = self else { return }
             switch state {
             case .ready:
-                onLog?("视频端口已连接 \(host):\(videoPort)")
+                self.onLog?("视频端口已连接 \(host):\(videoPort)")
                 // 发送 dummy 字节（scrcpy 握手）
                 conn.send(content: Data([0x00]), completion: .contentProcessed { _ in })
-                isRunning = true
-                receiveVideo()
+                self.isRunning = true
+                self.receiveVideo()
                 finish(.success(()))
             case .failed(let err):
-                isRunning = false
+                self.isRunning = false
                 finish(.failure(ScrcpyError.connectionFailed(err.localizedDescription)))
             case .cancelled:
-                isRunning = false
+                self.isRunning = false
             default:
                 break
             }
         }
 
         conn.start(queue: sessionQueue)
-        sessionQueue.asyncAfter(deadline: .now() + 15) {
-            if !isRunning {
+        sessionQueue.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self = self else { return }
+            if !self.isRunning {
                 finish(.failure(ScrcpyError.timeout))
             }
         }

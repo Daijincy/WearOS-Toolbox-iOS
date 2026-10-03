@@ -53,7 +53,7 @@ struct AdbPacket {
         data.appendUInt32(arg1)
         data.appendUInt32(UInt32(payload.count))
         data.append(payload)
-        let crc = zlib.crc32(0, [UInt8](payload), uInt(payload.count))
+        let crc = UInt32(zlib.crc32(0, [UInt8](payload), uInt(payload.count)))
         data.appendUInt32(crc)
         data.appendUInt32(command.rawValue ^ 0xFFFF_FFFF)
         return data
@@ -73,7 +73,7 @@ struct AdbPacket {
         let magic = data.readUInt32(at: offset + 20 + length)
 
         // 校验 CRC 与 magic
-        let crcCalc = zlib.crc32(0, [UInt8](payload), uInt(payload.count))
+        let crc = UInt32(zlib.crc32(0, [UInt8](payload), uInt(payload.count)))
         guard crc == crcCalc else {
             return (nil, 0)
         }
@@ -91,7 +91,7 @@ struct AdbPacket {
 extension Data {
     mutating func appendUInt32(_ value: UInt32) {
         var v = value.littleEndian
-        withUnsafeBytes(of: &v) { append(contentsOf: $0) }
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
 
     func readUInt32(at offset: Int) -> UInt32 {
@@ -102,7 +102,7 @@ extension Data {
 
     mutating func appendUInt16(_ value: UInt16) {
         var v = value.littleEndian
-        withUnsafeBytes(of: &v) { append(contentsOf: $0) }
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
 
     func readUInt16(at offset: Int) -> UInt16 {

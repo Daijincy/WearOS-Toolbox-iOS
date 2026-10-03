@@ -82,10 +82,11 @@ final class AdbPairingClient: @unchecked Sendable {
             finish(.failure(PairingError.timeout))
         }
 
-        conn.stateUpdateHandler = { state in
+        conn.stateUpdateHandler = { [weak self] state in
+            guard let self = self else { return }
             switch state {
             case .ready:
-                onLog?("配对 TCP 已连接 \(host):\(port)")
+                self.onLog?("配对 TCP 已连接 \(host):\(port)")
                 do {
                     let clientKey = Curve25519.KeyAgreement.PrivateKey()
                     context.clientPrivateKey = clientKey
@@ -105,7 +106,7 @@ final class AdbPairingClient: @unchecked Sendable {
                     packet.append(request)
                     conn.send(content: packet, completion: .contentProcessed { err in
                         if let err = err {
-                            onLog?("配对请求发送失败: \(err.localizedDescription)")
+                            self.onLog?("配对请求发送失败: \(err.localizedDescription)")
                             finish(.failure(PairingError.connectionFailed(err.localizedDescription)))
                         }
                     })
@@ -177,9 +178,15 @@ final class AdbPairingClient: @unchecked Sendable {
                 finish(.failure(PairingError.encryptionFailed))
                 return
             }
+            // SharedSecret → SymmetricKey（AES-GCM 密钥）
+            context.symmetricKey = SymmetricKey(data: shared)
 
             // 发送加密配对码包
             do {
+                guard let symmetricKey = context.symmetricKey else {
+                    finish(.failure(PairingError.encryptionFailed))
+                    return
+                }
                 var body = Data()
                 body.append(contentsOf: code.data(using: .ascii)!)
                 var plaintext = Data()
@@ -188,9 +195,13 @@ final class AdbPairingClient: @unchecked Sendable {
                 plaintext.append(body)
 
                 incrementNonce(&context.nonce)
+                guard let gcmNonce = AES.GCM.Nonce(data: context.nonce) else {
+                    finish(.failure(PairingError.encryptionFailed))
+                    return
+                }
                 let sealed = try AES.GCM.seal(plaintext,
-                                              using: shared,
-                                              nonce: AES.GCM.Nonce(data: context.nonce),
+                                              using: symmetricKey,
+                                              nonce: gcmNonce,
                                               authenticating: Data(Self.pairingHeader))
                 var packet = Data(Self.pairingHeader)
                 packet.append(context.nonce)
@@ -200,7 +211,7 @@ final class AdbPairingClient: @unchecked Sendable {
                         finish(.failure(PairingError.connectionFailed(err.localizedDescription)))
                     }
                 })
-                onLog?("配对码已加密发送")
+                self.onLog?("配对码已加密发送")
                 context.phase = .awaitingEncrypted
             } catch {
                 finish(.failure(PairingError.encryptionFailed))
@@ -224,9 +235,13 @@ final class AdbPairingClient: @unchecked Sendable {
             }
             do {
                 let sealed = try AES.GCM.SealedBox(combined: combined)
+                guard let gcmNonce = AES.GCM.Nonce(data: packetNonce) else {
+                    finish(.failure(PairingError.invalidResponse))
+                    return
+                }
                 let plaintext = try AES.GCM.open(sealed,
                                                  using: key,
-                                                 nonce: AES.GCM.Nonce(data: packetNonce),
+                                                 nonce: gcmNonce,
                                                  authenticating: Data(Self.pairingHeader))
                 guard plaintext.count >= 8 else {
                     finish(.failure(PairingError.invalidResponse))

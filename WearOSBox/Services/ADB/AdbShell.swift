@@ -68,7 +68,7 @@ final class AdbShell {
         parser.onStderr = { stderrData.append($0) }
         var didFinish = false
 
-        func finish(_ result: Result<(String, Int), Error>) {
+        func finish(_ result: Result<(output: String, exitCode: Int), Error>) {
             guard !didFinish else { return }
             didFinish = true
             if let id = channelID { client.close(channel: id) }
@@ -79,12 +79,12 @@ final class AdbShell {
             parser.append(data)
         }, onClose: {
             // 通道被远端关闭
-            finish(.success((String(data: stdoutData, encoding: .utf8) ?? "",
-                             stderrData.isEmpty ? 0 : -1)))
+            finish(.success((output: String(data: stdoutData, encoding: .utf8) ?? "",
+                             exitCode: stderrData.isEmpty ? 0 : -1)))
         })
         parser.onExit = { code in
-            onLog?("命令退出码: \(code)")
-            finish(.success((String(data: stdoutData, encoding: .utf8) ?? "", code)))
+            self.onLog?("命令退出码: \(code)")
+            finish(.success((output: String(data: stdoutData, encoding: .utf8) ?? "", exitCode: code)))
         }
 
         // 超时保护
