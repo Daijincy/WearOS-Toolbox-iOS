@@ -1,8 +1,8 @@
 import Foundation
-import dns_sd
 
 /// DNS-SD 服务解析：将 mDNS 发现的 Bonjour 服务解析为 IP 与端口
 /// 安卓无线调试的 mDNS 广播不含 IP/端口，必须通过 DNSServiceResolve 获取
+/// （dns_sd.h 通过 Bridging Header 引入）
 final class BonjourResolver {
     struct ResolvedService {
         let name: String

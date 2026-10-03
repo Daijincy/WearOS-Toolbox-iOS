@@ -32,6 +32,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.daijincy.wearosbox
         INFOPLIST_FILE: WearOSBox/Info.plist
         CODE_SIGN_ENTITLEMENTS: WearOSBox/WearOSBox.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: WearOSBox/WearOSBox-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LOCAL_NETWORK_USAGE_DESCRIPTION: 用于局域网内连接 WearOS 手表的无线 ADB 调试服务
     scheme:
