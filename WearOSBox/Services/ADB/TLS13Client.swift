@@ -332,7 +332,7 @@ final class TLS13Client: @unchecked Sendable {
         // 密钥调度（自实现 HKDF-SHA256，规避 SDK API 差异）
         let early = hkdfExtract(Data(repeating: 0, count: hashLen), salt: Data(repeating: 0, count: hashLen))
         let derived1 = deriveSecret(secret: SymmetricKey(data: early), label: "derived", transcript: Data())
-        let hs = hkdfExtract(sharedBytes, salt: derived1)
+        let hs = hkdfExtract(sharedBytes, salt: symKeyData(derived1))
         let hsKey = SymmetricKey(data: hs)
 
         // transcript = CH || SH
@@ -431,9 +431,9 @@ final class TLS13Client: @unchecked Sendable {
         // 从 CH..SF 重新推导 handshake_secret
         let early = hkdfExtract(Data(repeating: 0, count: hashLen), salt: Data(repeating: 0, count: hashLen))
         let derived1 = deriveSecret(secret: SymmetricKey(data: early), label: "derived", transcript: Data())
-        let hs = hkdfExtract(ecdheSharedSecret, salt: derived1)
+        let hs = hkdfExtract(ecdheSharedSecret, salt: symKeyData(derived1))
         let derived2 = deriveSecret(secret: SymmetricKey(data: hs), label: "derived", transcript: Data())
-        return hkdfExtract(Data(repeating: 0, count: hashLen), salt: derived2)
+        return hkdfExtract(Data(repeating: 0, count: hashLen), salt: symKeyData(derived2))
     }
 
     // MARK: - HKDF-SHA256（RFC 5869，HMAC 实现）
