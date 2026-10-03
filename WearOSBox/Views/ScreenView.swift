@@ -137,8 +137,10 @@ struct ScreenView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard scrcpy.isRunning else { return }
-                let x = Float(value.location.x / max(UIScreen.main.bounds.width, 1))
-                let y = Float(value.location.y / max(UIScreen.main.bounds.height, 1))
+                let w = value.size.width > 0 ? value.size.width : 1
+                let h = value.size.height > 0 ? value.size.height : 1
+                let x = Float(value.location.x / w)
+                let y = Float(value.location.y / h)
                 scrcpy.injectTouch(action: .move, x: min(max(x, 0), 1), y: min(max(y, 0), 1))
             }
             .onEnded { _ in

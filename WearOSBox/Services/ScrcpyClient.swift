@@ -244,15 +244,14 @@ final class ScrcpyClient: ObservableObject, @unchecked Sendable {
         var fd: CMVideoFormatDescription?
         let status = sps.withUnsafeBytes { spsPtr in
             pps.withUnsafeBytes { ppsPtr in
-                var spsParam = [spsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)]
-                var ppsParam = [ppsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)]
-                var spsSizes = [sps.count]
-                var ppsSizes = [pps.count]
+                var pointers = [spsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                                ppsPtr.baseAddress!.assumingMemoryBound(to: UInt8.self)]
+                var sizes = [sps.count, pps.count]
                 return CMVideoFormatDescriptionCreateFromH264ParameterSets(
                     allocator: kCFAllocatorDefault,
-                    parameterSetCount: 1,
-                    parameterSetPointers: &spsParam,
-                    parameterSetSizes: &spsSizes,
+                    parameterSetCount: 2,
+                    parameterSetPointers: &pointers,
+                    parameterSetSizes: &sizes,
                     nalUnitHeaderLength: 4,
                     formatDescriptionOut: &fd)
             }

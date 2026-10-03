@@ -80,7 +80,6 @@ final class BonjourResolver {
     private static func resolveIPv4(hostname: String, timeout: TimeInterval) -> String? {
         var addrRef: DNSServiceRef?
         let semaphore = DispatchSemaphore(value: 0)
-        var result: String?
         let lock = NSLock()
 
         let contextPtr = Unmanaged.passRetained(AddrContext(semaphore: semaphore, lock: lock)).toOpaque()
@@ -93,7 +92,7 @@ final class BonjourResolver {
                 _ = inet_ntop(AF_INET, &addr4.sin_addr, &buffer, socklen_t(buffer.count))
                 let ip = String(cString: buffer)
                 c.lock.lock()
-                if result == nil { result = ip }
+                if c.ip == nil { c.ip = ip }
                 c.lock.unlock()
             }
             c.semaphore.signal()
@@ -105,6 +104,7 @@ final class BonjourResolver {
             Unmanaged<AddrContext>.fromOpaque(contextPtr).release()
             return nil
         }
+        let ctx = Unmanaged<AddrContext>.fromOpaque(contextPtr).takeUnretainedValue()
 
         let fd = DNSServiceRefSockFD(ref)
         let deadline = Date().addingTimeInterval(timeout)
@@ -119,12 +119,13 @@ final class BonjourResolver {
         }
         DNSServiceRefDeallocate(ref)
         Unmanaged<AddrContext>.fromOpaque(contextPtr).release()
-        return result
+        return ctx.ip
     }
 
     private final class AddrContext {
         let semaphore: DispatchSemaphore
         let lock: NSLock
+        var ip: String?
         init(semaphore: DispatchSemaphore, lock: NSLock) {
             self.semaphore = semaphore
             self.lock = lock
