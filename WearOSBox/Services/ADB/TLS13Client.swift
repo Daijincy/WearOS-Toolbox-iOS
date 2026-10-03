@@ -108,7 +108,7 @@ final class TLS13Client: @unchecked Sendable {
                 self.onLog?("TLS TCP 已连接 \(host):\(port)")
                 do {
                     let hello = try self.buildClientHello()
-                    self.sendRecord(type: 22, payload: hello, encrypted: false)
+                    try self.sendRecord(type: 22, payload: hello, encrypted: false)
                     self.phase = .awaitingServerHello
                     self.receiveLoop()
                 } catch {
@@ -159,7 +159,7 @@ final class TLS13Client: @unchecked Sendable {
             if let data = data, !data.isEmpty {
                 self.recvBuffer.append(data)
                 do {
-                    if !self.processRecords() {
+                    if try !self.processRecords() {
                         return
                     }
                 } catch {
@@ -241,7 +241,7 @@ final class TLS13Client: @unchecked Sendable {
         // cipher_suites: [0x1301]
         body.append(0x00)
         body.append(0x02)
-        body.appendUInt16(0x1301)
+        body.appendUInt16BE(0x1301)
         body.append(0x01)  // compression_methods: [null]
         body.append(0x00)
 
@@ -249,23 +249,23 @@ final class TLS13Client: @unchecked Sendable {
         var exts = Data()
         // supported_versions (43): [TLS 1.3]
         var v43 = Data([0x00, 0x02, 0x03, 0x04])
-        exts.appendUInt16(43)
-        exts.appendUInt16(UInt16(v43.count))
+        exts.appendUInt16BE(43)
+        exts.appendUInt16BE(UInt16(v43.count))
         exts.append(v43)
         // key_share (51): [X25519(0x001D), pub(32)]
         var ks = Data([0x00, 0x1d])
-        ks.appendUInt16(UInt16(pub.count))
+        ks.appendUInt16BE(UInt16(pub.count))
         ks.append(pub)
-        exts.appendUInt16(51)
-        exts.appendUInt16(UInt16(ks.count))
+        exts.appendUInt16BE(51)
+        exts.appendUInt16BE(UInt16(ks.count))
         exts.append(ks)
         // signature_algorithms (13): rsa_pss_rsae_sha256(0x0804), rsa_pkcs1_sha256(0x0401)
         var sa = Data([0x00, 0x04, 0x08, 0x04, 0x04, 0x01])
-        exts.appendUInt16(13)
-        exts.appendUInt16(UInt16(sa.count))
+        exts.appendUInt16BE(13)
+        exts.appendUInt16BE(UInt16(sa.count))
         exts.append(sa)
 
-        body.appendUInt16(UInt16(exts.count))
+        body.appendUInt16BE(UInt16(exts.count))
         body.append(exts)
 
         var hello = Data([0x01])  // handshake type ClientHello
@@ -329,13 +329,11 @@ final class TLS13Client: @unchecked Sendable {
         let sharedBytes = shared.withUnsafeBytes { Data($0) }
         ecdheSharedSecret = sharedBytes
 
-        // 密钥调度
-        let early = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: Data(repeating: 0, count: hashLen)),
-                                         salt: Data(repeating: 0, count: hashLen))
-        let derived1 = deriveSecret(secret: SymmetricKey(data: symKeyData(early)), label: "derived", transcript: Data())
-        let hs = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: sharedBytes),
-                                      salt: symKeyData(derived1))
-        let hsKey = SymmetricKey(data: symKeyData(hs))
+        // 密钥调度（自实现 HKDF-SHA256，规避 SDK API 差异）
+        let early = hkdfExtract(Data(repeating: 0, count: hashLen), salt: Data(repeating: 0, count: hashLen))
+        let derived1 = deriveSecret(secret: SymmetricKey(data: early), label: "derived", transcript: Data())
+        let hs = hkdfExtract(sharedBytes, salt: derived1)
+        let hsKey = SymmetricKey(data: hs)
 
         // transcript = CH || SH
         let chSH = transcriptHashCopy()
@@ -383,7 +381,7 @@ final class TLS13Client: @unchecked Sendable {
             }
             // 派生应用流量密钥（transcript 到 server Finished 为止）
             let hs = masterSecretFromHandshake()
-            let masterKey = SymmetricKey(data: symKeyData(hs))
+            let masterKey = SymmetricKey(data: hs)
             let fullTranscript = transcriptHashCopy()
             let cAp = deriveSecret(secret: masterKey, label: "c ap traffic", transcript: fullTranscript)
             let sAp = deriveSecret(secret: masterKey, label: "s ap traffic", transcript: fullTranscript)
@@ -429,17 +427,38 @@ final class TLS13Client: @unchecked Sendable {
     }
 
     /// master_secret = HKDF-Extract(Derive-Secret(handshake_secret, "derived", ""), 0)
-    private func masterSecretFromHandshake() -> [UInt8] {
+    private func masterSecretFromHandshake() -> Data {
         // 从 CH..SF 重新推导 handshake_secret
-        let early = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: Data(repeating: 0, count: hashLen)),
-                                         salt: Data(repeating: 0, count: hashLen))
-        let derived1 = deriveSecret(secret: SymmetricKey(data: symKeyData(early)), label: "derived", transcript: Data())
-        let hs = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: ecdheSharedSecret),
-                                      salt: symKeyData(derived1))
-        let derived2 = deriveSecret(secret: SymmetricKey(data: symKeyData(hs)), label: "derived", transcript: Data())
-        let master = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: Data(repeating: 0, count: hashLen)),
-                                          salt: symKeyData(derived2))
-        return Array(master)
+        let early = hkdfExtract(Data(repeating: 0, count: hashLen), salt: Data(repeating: 0, count: hashLen))
+        let derived1 = deriveSecret(secret: SymmetricKey(data: early), label: "derived", transcript: Data())
+        let hs = hkdfExtract(ecdheSharedSecret, salt: derived1)
+        let derived2 = deriveSecret(secret: SymmetricKey(data: hs), label: "derived", transcript: Data())
+        return hkdfExtract(Data(repeating: 0, count: hashLen), salt: derived2)
+    }
+
+    // MARK: - HKDF-SHA256（RFC 5869，HMAC 实现）
+
+    /// Extract: PRK = HMAC-SHA256(salt, IKM)
+    private func hkdfExtract(_ ikm: Data, salt: Data) -> Data {
+        let mac = HMAC<SHA256>.authenticationCode(for: ikm, using: SymmetricKey(data: salt))
+        return mac.withUnsafeBytes { Data($0) }
+    }
+
+    /// Expand: OKM = T(1) || T(2) || ...（info || counter）
+    private func hkdfExpand(prk: Data, info: Data, length: Int) -> Data {
+        var out = Data()
+        var t = Data()
+        var counter: UInt8 = 1
+        while out.count < length {
+            var input = t
+            input.append(info)
+            input.append(counter)
+            let mac = HMAC<SHA256>.authenticationCode(for: input, using: SymmetricKey(data: prk))
+            t = mac.withUnsafeBytes { Data($0) }
+            out.append(t)
+            counter += 1
+        }
+        return Data(out.prefix(length))
     }
 
     private func symKeyData(_ k: SymmetricKey) -> Data {
@@ -455,14 +474,14 @@ final class TLS13Client: @unchecked Sendable {
         var certList = Data()
         certList.appendUInt24(UInt32(clientCertDER.count))
         certList.append(clientCertDER)
-        certList.appendUInt16(0)  // 无 extensions
+        certList.appendUInt16BE(0)  // 无 extensions
         var certMsg = Data()
         certMsg.append(0)  // certificate_request_context 空
         certMsg.appendUInt24(UInt32(certList.count))
         certMsg.append(certList)
         let certWire = encodeHandshake(type: 11, body: certMsg)
         updateTranscript(certWire)
-        sendRecord(type: 22, payload: certWire, encrypted: true)
+        try sendRecord(type: 22, payload: certWire, encrypted: true)
 
         // CertificateVerify（签名内容 = 64空格 + "TLS 1.3, client CertificateVerify" + 0x00 + transcript_hash）
         let transcript = transcriptHashCopy()
@@ -478,18 +497,18 @@ final class TLS13Client: @unchecked Sendable {
             throw TLS13Error.handshakeFailed("RSA 签名失败")
         }
         var cvBody = Data()
-        cvBody.appendUInt16(0x0804)  // rsa_pss_rsae_sha256
-        cvBody.appendUInt16(UInt16(signature.count))
+        cvBody.appendUInt16BE(0x0804)  // rsa_pss_rsae_sha256
+        cvBody.appendUInt16BE(UInt16(signature.count))
         cvBody.append(signature)
         let cvWire = encodeHandshake(type: 15, body: cvBody)
         updateTranscript(cvWire)
-        sendRecord(type: 22, payload: cvWire, encrypted: true)
+        try sendRecord(type: 22, payload: cvWire, encrypted: true)
 
         // Finished
         let verify = computeVerifyData(key: clientFinishedKey, transcript: transcriptHashCopy())
         let finWire = encodeHandshake(type: 20, body: verify)
         updateTranscript(finWire)
-        sendRecord(type: 22, payload: finWire, encrypted: true)
+        try sendRecord(type: 22, payload: finWire, encrypted: true)
     }
 
     // MARK: - 密钥工具
@@ -500,18 +519,19 @@ final class TLS13Client: @unchecked Sendable {
 
     private func expandLabel(key: SymmetricKey, label: String, context: Data, length: Int) -> Data {
         var info = Data()
-        info.appendUInt16(UInt16(length))
+        info.appendUInt16BE(UInt16(length))
         let fullLabel = "tls13 " + label
         info.append(UInt8(fullLabel.utf8.count))
         info.append(Data(fullLabel.utf8))
         info.append(UInt8(context.count))
         info.append(context)
-        return Data(HKDF<SHA256>.expand(pseudoRandomKey: key, info: info, outputByteCount: length))
+        return hkdfExpand(prk: symKeyData(key), info: info, length: length)
     }
 
     private func computeVerifyData(key: Data, transcript: Data) -> Data {
         let fk = expandLabel(key: SymmetricKey(data: key), label: "finished", context: Data(), length: hashLen)
-        return Data(HMAC<SHA256>.authenticationCode(for: transcript, using: SymmetricKey(data: fk)))
+        let mac = HMAC<SHA256>.authenticationCode(for: transcript, using: SymmetricKey(data: fk))
+        return mac.withUnsafeBytes { Data($0) }
     }
 
     // MARK: - 转录哈希
@@ -553,7 +573,7 @@ final class TLS13Client: @unchecked Sendable {
             seqWrite += 1
         }
         var header = Data([recordType, 0x03, 0x03])
-        header.appendUInt16(UInt16(body.count))
+        header.appendUInt16BE(UInt16(body.count))
         connection?.send(content: header + body, completion: .contentProcessed { [weak self] err in
             if let err = err {
                 self?.onLog?("TLS 发送失败: \(err.localizedDescription)")
@@ -626,7 +646,7 @@ final class TLS13Client: @unchecked Sendable {
 // MARK: - 工具扩展
 
 extension Data {
-    mutating func appendUInt16(_ v: UInt16) {
+    mutating func appendUInt16BE(_ v: UInt16) {
         append(UInt8(v >> 8))
         append(UInt8(v & 0xff))
     }

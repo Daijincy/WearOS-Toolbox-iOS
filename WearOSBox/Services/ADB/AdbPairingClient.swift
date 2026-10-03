@@ -246,21 +246,34 @@ final class AdbPairingClient: @unchecked Sendable {
     /// 发送帧：version(1) + type(1) + len(4BE) + payload
     private func sendFrame(_ tls: TLS13Client, type: UInt8, payload: Data) {
         var header = Data([0x01, type])
-        header.appendUInt32(UInt32(payload.count))
+        header.appendUInt32BE(UInt32(payload.count))
         tls.send(header + payload)
     }
 
-    /// HKDF-SHA256：extract(salt=zeros(32), ikm) + expand(info, 0x01)
+    /// HKDF-SHA256（RFC 5869，HMAC 实现）：extract(salt=zeros(32), ikm) + expand(info, 0x01)
     private func hkdfSha256(ikm: Data, info: Data, outLen: Int) -> Data? {
-        let prk = HKDF<SHA256>.extract(inputKeyMaterial: SymmetricKey(data: ikm),
-                                       salt: Data(repeating: 0, count: 32))
-        let okm = HKDF<SHA256>.expand(pseudoRandomKey: prk, info: info, outputByteCount: outLen)
-        return Data(okm)
+        // PRK = HMAC-SHA256(salt=zeros(32), ikm)
+        let mac = HMAC<SHA256>.authenticationCode(for: ikm, using: SymmetricKey(data: Data(repeating: 0, count: 32)))
+        let prk = mac.withUnsafeBytes { Data($0) }
+        // OKM = T(1) || T(2) ...
+        var out = Data()
+        var t = Data()
+        var counter: UInt8 = 1
+        while out.count < outLen {
+            var input = t
+            input.append(info)
+            input.append(counter)
+            let m = HMAC<SHA256>.authenticationCode(for: input, using: SymmetricKey(data: prk))
+            t = m.withUnsafeBytes { Data($0) }
+            out.append(t)
+            counter += 1
+        }
+        return Data(out.prefix(outLen))
     }
 }
 
 extension Data {
-    mutating func appendUInt32(_ v: UInt32) {
+    mutating func appendUInt32BE(_ v: UInt32) {
         append(UInt8((v >> 24) & 0xff))
         append(UInt8((v >> 16) & 0xff))
         append(UInt8((v >> 8) & 0xff))
