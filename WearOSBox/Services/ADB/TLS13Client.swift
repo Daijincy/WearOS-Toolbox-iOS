@@ -252,10 +252,13 @@ final class TLS13Client: @unchecked Sendable {
         exts.appendUInt16BE(43)
         exts.appendUInt16BE(UInt16(v43.count))
         exts.append(v43)
-        // key_share (51): [X25519(0x001D), pub(32)]
-        var ks = Data([0x00, 0x1d])
-        ks.appendUInt16BE(UInt16(pub.count))
-        ks.append(pub)
+        // key_share (51): client_shares<2..> = [KeyShareEntry(group=X25519, key_exchange=pub)]
+        var ksEntry = Data([0x00, 0x1d])  // NamedGroup x25519
+        ksEntry.appendUInt16BE(UInt16(pub.count))
+        ksEntry.append(pub)
+        var ks = Data()
+        ks.appendUInt16BE(UInt16(ksEntry.count))  // client_shares 长度前缀
+        ks.append(ksEntry)
         exts.appendUInt16BE(51)
         exts.appendUInt16BE(UInt16(ks.count))
         exts.append(ks)
