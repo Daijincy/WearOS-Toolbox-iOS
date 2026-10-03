@@ -29,7 +29,12 @@ final class AdbSessionManager: ObservableObject, @unchecked Sendable {
     func pair(profile: DeviceProfile, code: String,
               completion: @escaping (Result<Void, Error>) -> Void) {
         state = .pairing
-        pairingClient.pair(host: profile.pairIP, port: profile.pairPort, code: code) { [weak self] result in
+        // 复用档案已保存密钥（若存在），保证配对与后续连接使用同一公钥
+        var savedKey: AdbClient.AdbKeyPair?
+        if let keyData = profile.adbPrivateKey {
+            savedKey = AdbClient.restoreKeyPair(privateKeyData: keyData)
+        }
+        pairingClient.pair(host: profile.pairIP, port: profile.pairPort, code: code, keyPair: savedKey) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {

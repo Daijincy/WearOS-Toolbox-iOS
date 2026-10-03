@@ -27,6 +27,7 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - path: WearOSBox
+      - path: Vendor/BigInt
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.daijincy.wearosbox
