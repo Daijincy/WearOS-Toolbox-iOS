@@ -111,7 +111,13 @@ struct ScreenView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .gesture(mirrorGesture)
+                    .overlay(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .gesture(mirrorGesture(size: proxy.size))
+                        }
+                    )
             } else {
                 ProgressView("等待视频流…")
                     .tint(.white)
@@ -132,13 +138,13 @@ struct ScreenView: View {
         }
     }
 
-    /// scrcpy 触控手势（归一化坐标）
-    private var mirrorGesture: some Gesture {
+    /// scrcpy 触控手势（归一化坐标，相对于镜像画面区域）
+    private func mirrorGesture(size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard scrcpy.isRunning else { return }
-                let w = value.size.width > 0 ? value.size.width : 1
-                let h = value.size.height > 0 ? value.size.height : 1
+                let w = size.width > 0 ? size.width : 1
+                let h = size.height > 0 ? size.height : 1
                 let x = Float(value.location.x / w)
                 let y = Float(value.location.y / h)
                 scrcpy.injectTouch(action: .move, x: min(max(x, 0), 1), y: min(max(y, 0), 1))
